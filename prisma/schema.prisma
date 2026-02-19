@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AssetType {
+  image_raw
+  image_typeset
+  video
+}
+
+model Series {
+  id            BigInt    @id @default(autoincrement())
+  title         String
+  totalEpisodes Int       @default(30) @map("total_episodes")
+  languageMode  String    @map("language_mode")
+  stylePreset   String    @map("style_preset")
+  ratio         String
+  seriesBible   Json?     @map("series_bible")
+  episodes      Episode[]
+  jobs          Job[]
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@map("series")
+}
+
+model Episode {
+  id         BigInt   @id @default(autoincrement())
+  seriesId   BigInt   @map("series_id")
+  epNumber   Int      @map("ep_number")
+  title      String?
+  outline    Json?
+  script45s  Json?    @map("script_45s")
+  storyboard Json?
+  motionPlan Json?    @map("motion_plan")
+  audioPlan  Json?    @map("audio_plan")
+  status     String   @default("pending")
+  series     Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  panels     Panel[]
+  jobs       Job[]
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@unique([seriesId, epNumber])
+  @@index([seriesId])
+  @@index([status])
+  @@map("episodes")
+}
+
+model Panel {
+  id             BigInt   @id @default(autoincrement())
+  episodeId      BigInt   @map("episode_id")
+  panelNumber    Int      @map("panel_number")
+  prompt         String?
+  negativePrompt String?  @map("negative_prompt")
+  dialogue       String?
+  narration      String?
+  imageUrl       String?  @map("image_url")
+  status         String   @default("pending")
+  episode        Episode  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  assets         Asset[]
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([episodeId, panelNumber])
+  @@index([episodeId])
+  @@index([status])
+  @@map("panels")
+}
+
+model Asset {
+  id        BigInt    @id @default(autoincrement())
+  panelId   BigInt    @map("panel_id")
+  type      AssetType
+  url       String
+  version   Int       @default(1)
+  seed      Int?
+  panel     Panel     @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([panelId])
+  @@index([type])
+  @@map("assets")
+}
+
+model Job {
+  id         BigInt    @id @default(autoincrement())
+  seriesId   BigInt?   @map("series_id")
+  episodeId  BigInt?   @map("episode_id")
+  step       String
+  status     String    @default("queued")
+  progress   Int       @default(0)
+  error      String?
+  retryCount Int       @default(0) @map("retry_count")
+  logs       Json?
+  series     Series?   @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  episode    Episode?  @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([seriesId])
+  @@index([episodeId])
+  @@index([step])
+  @@index([status])
+  @@map("jobs")
+}

@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Comic Pipeline MVP</title>
+    <style>
+      :root { --bg:#f3f6fb; --panel:#fff; --text:#13243a; --muted:#5f738d; --accent:#0f766e; --line:#c9d4e5; --danger:#b91c1c; }
+      body { margin:0; font-family:"IBM Plex Sans","Noto Sans SC","Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at 0% 0%,#d9ecff 0,transparent 35%),radial-gradient(circle at 100% 100%,#dff8ee 0,transparent 35%),var(--bg); }
+      .wrap { max-width:1160px; margin:24px auto; padding:0 14px; }
+      .card { background:var(--panel); border-radius:14px; box-shadow:0 12px 28px rgba(16,32,51,.12); padding:16px; margin-bottom:14px; }
+      h1,h2 { margin:0 0 8px; }
+      h1 { font-size:26px; }
+      h2 { font-size:20px; }
+      p { margin:0 0 12px; color:var(--muted); }
+      .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:10px; }
+      .f { grid-column:span 12; }
+      .f.c8 { grid-column:span 8; }
+      .f.c6 { grid-column:span 6; }
+      .f.c4 { grid-column:span 4; }
+      .f.c3 { grid-column:span 3; }
+      .f.c2 { grid-column:span 2; }
+      label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+      input,select,textarea,button { width:100%; border:1px solid var(--line); border-radius:9px; padding:10px; font:inherit; box-sizing:border-box; }
+      textarea { min-height:96px; resize:vertical; }
+      .chips { display:flex; flex-wrap:wrap; gap:8px; }
+      .chip { border:1px solid var(--line); border-radius:999px; padding:6px 10px; cursor:pointer; user-select:none; font-size:13px; }
+      .chip.active { background:#def7ef; border-color:#82d6bd; color:#055f52; }
+      .actions { display:flex; gap:8px; }
+      .actions button { flex:1; }
+      button { background:var(--accent); color:#fff; border:none; cursor:pointer; font-weight:700; height:42px; }
+      button.secondary { background:#2563eb; }
+      button.warn { background:#0f172a; }
+      button:disabled { opacity:.6; cursor:not-allowed; }
+      pre { margin-top:10px; background:#091325; color:#d6e4ff; border-radius:10px; padding:12px; min-height:120px; overflow:auto; }
+      .muted { color:var(--muted); font-size:12px; }
+      .err { color:var(--danger); }
+      .images { margin-top:12px; display:grid; gap:12px; }
+      .imgCard { border:1px solid var(--line); border-radius:10px; padding:8px; background:#fff; }
+      .imgCard img { width:100%; max-width:560px; border-radius:8px; border:1px solid var(--line); display:block; }
+      .imgCard a { display:inline-block; margin-top:6px; color:#0f766e; }
+      .summary { border:1px solid var(--line); border-radius:10px; padding:10px; background:#f8fbff; font-size:14px; }
+      table { width:100%; border-collapse:collapse; font-size:13px; }
+      th,td { border-bottom:1px solid var(--line); text-align:left; padding:6px; }
+      .status-done { color:#065f46; }
+      .status-running { color:#1d4ed8; }
+      .status-queued { color:#92400e; }
+      .status-failed { color:#b91c1c; }
+      @media (max-width:980px){ .f.c8,.f.c6,.f.c4,.f.c3,.f.c2{ grid-column:span 12; } .actions{ flex-direction:column; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Comic Pipeline MVP</h1>
+        <p>填初步想法可直接生成单集，也可创建 Series 并进入连续剧管理流程。</p>
+
+        <div class="grid">
+          <div class="f c6"><label>系列标题</label><input id="seriesTitle" value="Pahlawan Ombak" /></div>
+          <div class="f c3"><label>生成第几集</label><input id="episodeNo" type="number" min="1" value="1" /></div>
+          <div class="f c3"><label>总集数</label><input id="episodeCount" type="number" min="1" max="30" value="10" /></div>
+
+          <div class="f c6"><label>故事大纲（你的初步想法）</label><textarea id="outline"></textarea></div>
+          <div class="f c6"><label>核心冲突</label><textarea id="conflict"></textarea></div>
+
+          <div class="f c3"><label>Ratio</label><select id="ratio"><option>9:16</option><option>16:9</option></select></div>
+          <div class="f c3"><label>Platform</label><select id="platform"><option value="">None</option><option>YOUTUBE</option><option>FACEBOOK</option></select></div>
+          <div class="f c3"><label>语言模式</label><select id="languageMode"><option>BM_SABAH</option><option>HYBRID</option><option>SULUK</option><option>BAJAU</option></select></div>
+          <div class="f c3"><label>动画风格偏好</label><select id="styleVariant"><option>semi-real anime cinematic</option><option>gritty realistic anime</option><option>bright heroic anime</option></select></div>
+
+          <div class="f c3"><label>Gemini分镜图</label><select id="renderImages"><option value="1">生成2张9宫图</option><option value="0">只生成JSON</option></select></div>
+          <div class="f c3"><label>Batch 起始集</label><input id="batchStartQuick" type="number" min="1" value="1" /></div>
+          <div class="f c3"><label>Batch 结束集</label><input id="batchEndQuick" type="number" min="1" value="3" /></div>
+
+          <div class="f"><label>故事性质（可多选）</label><div id="genreChips" class="chips"></div></div>
+          <div class="f c6"><label>本土文化焦点</label><input id="subculture" value="Bajau village" /></div>
+          <div class="f c6"><label>主角视觉签名（角色一致性）</label><textarea id="heroVisual">tan skin, sharp anime eyes, short messy black hair, Bajau woven sash, teal glowing tattoo on forearm, lightweight tactical sarong pants</textarea></div>
+
+          <div class="f actions">
+            <button id="runSingle">一键生成单集</button>
+            <button id="createSeries" class="secondary">创建Series并批量排队</button>
+          </div>
+        </div>
+
+        <div class="muted" id="status"></div>
+        <div class="images" id="images"></div>
+        <pre id="result"></pre>
+      </div>
+
+      <div class="card">
+        <h2>Series 管理</h2>
+        <p>围绕同一个 Series 做 Bible 管理、逐集推进、批量区间生成与进度追踪。</p>
+
+        <div class="grid">
+          <div class="f c3"><label>Series ID</label><input id="seriesId" type="number" min="1" placeholder="例如 12" /></div>
+          <div class="f c3"><label>Job ID（可选）</label><input id="jobId" type="number" min="1" placeholder="自动填充" /></div>
+          <div class="f c6 actions" style="align-self:end;">
+            <button id="loadSeries">刷新 Series 概览</button>
+            <button id="pollJob" class="warn">轮询 Job</button>
+          </div>
+
+          <div class="f c4 actions" style="align-self:end;">
+            <button id="nextEpisode">Generate Next Episode</button>
+          </div>
+          <div class="f c2"><label>Batch Start</label><input id="batchStart" type="number" min="1" value="1" /></div>
+          <div class="f c2"><label>Batch End</label><input id="batchEnd" type="number" min="1" value="5" /></div>
+          <div class="f c4 actions" style="align-self:end;">
+            <button id="batchRun" class="secondary">Batch Generate Range</button>
+          </div>
+
+          <div class="f c8"><label>Series Bible JSON</label><textarea id="bibleJson" style="min-height:180px;"></textarea></div>
+          <div class="f c4">
+            <label>Bible 操作</label>
+            <div class="actions" style="margin-bottom:8px;">
+              <button id="loadBible">Load Bible</button>
+              <button id="saveBible" class="secondary">Save Bible</button>
+            </div>
+            <label><input id="bibleLock" type="checkbox" style="width:auto; margin-right:6px;" />保存后锁定 Bible（不可再编辑）</label>
+          </div>
+
+          <div class="f"><div id="seriesSummary" class="summary">暂无数据</div></div>
+          <div class="f"><label>Episodes</label><div style="overflow:auto;"><table id="episodesTable"></table></div></div>
+        </div>
+
+        <div class="muted" id="seriesStatus"></div>
+        <pre id="seriesResult"></pre>
+      </div>
+    </div>
+
+    <script>
+      const genres = ['action', 'love', 'sci-fi', 'magic', 'hero'];
+      const picked = new Set(['action', 'hero']);
+      const chipsWrap = document.getElementById('genreChips');
+
+      const statusEl = document.getElementById('status');
+      const resultEl = document.getElementById('result');
+      const imagesWrap = document.getElementById('images');
+
+      const seriesIdEl = document.getElementById('seriesId');
+      const jobIdEl = document.getElementById('jobId');
+      const seriesStatusEl = document.getElementById('seriesStatus');
+      const seriesResultEl = document.getElementById('seriesResult');
+      const summaryEl = document.getElementById('seriesSummary');
+      const tableEl = document.getElementById('episodesTable');
+      const bibleEl = document.getElementById('bibleJson');
+      const bibleLockEl = document.getElementById('bibleLock');
+
+      let polling = null;
+
+      function renderChips() {
+        chipsWrap.innerHTML = '';
+        genres.forEach((g) => {
+          const el = document.createElement('div');
+          el.className = 'chip' + (picked.has(g) ? ' active' : '');
+          el.textContent = g;
+          el.onclick = () => {
+            if (picked.has(g)) picked.delete(g); else picked.add(g);
+            renderChips();
+          };
+          chipsWrap.appendChild(el);
+        });
+      }
+      renderChips();
+
+      function quickPayload() {
+        return {
+          mode: 'quick',
+          episodeNo: Number(document.getElementById('episodeNo').value),
+          ratio: document.getElementById('ratio').value,
+          platform: document.getElementById('platform').value || undefined,
+          quick: {
+            seriesTitle: document.getElementById('seriesTitle').value,
+            episodeCount: Number(document.getElementById('episodeCount').value),
+            storyOutline: document.getElementById('outline').value,
+            coreConflict: document.getElementById('conflict').value,
+            languageMode: document.getElementById('languageMode').value,
+            styleVariant: document.getElementById('styleVariant').value,
+            genreTags: Array.from(picked),
+            subcultureFocus: document.getElementById('subculture').value,
+            heroVisualSignature: document.getElementById('heroVisual').value
+          }
+        };
+      }
+
+      async function apiJson(url, init) {
+        const res = await fetch(url, init);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        return data;
+      }
+
+      async function loadOverview() {
+        const seriesId = Number(seriesIdEl.value);
+        if (!Number.isInteger(seriesId) || seriesId <= 0) throw new Error('Series ID 无效');
+        const data = await apiJson(`/api/series/${seriesId}`);
+        renderOverview(data);
+        seriesResultEl.textContent = JSON.stringify(data, null, 2);
+        return data;
+      }
+
+      function renderOverview(data) {
+        const s = data.series || {};
+        const st = data.state || {};
+        const m = data.summary || {};
+
+        summaryEl.innerHTML = [
+          `<b>${s.title || 'Untitled'}</b> (ID: ${s.id || '-'})`,
+          `max_episodes: ${s.max_episodes ?? '-'} | ratio: ${s.ratio_default ?? '-'} | language: ${s.language_mode ?? '-'}`,
+          `current_episode_no: ${st.current_episode_no ?? 0} | done/running/queued/failed: ${m.done ?? 0}/${m.running ?? 0}/${m.queued ?? 0}/${m.failed ?? 0}`
+        ].join('<br/>');
+
+        const eps = Array.isArray(data.episodes) ? data.episodes : [];
+        const head = '<tr><th>EP</th><th>Status</th><th>Attempts</th><th>Error</th><th>Finished</th></tr>';
+        const rows = eps.map((ep) => {
+          const css = `status-${String(ep.status || '').toLowerCase()}`;
+          return `<tr><td>EP${String(ep.episode_no).padStart(2, '0')}</td><td class="${css}">${ep.status || '-'}</td><td>${ep.attempts || 0}</td><td>${ep.error_message || ''}</td><td>${ep.finished_at || ''}</td></tr>`;
+        }).join('');
+        tableEl.innerHTML = head + rows;
+      }
+
+      async function startJobPolling(jobId) {
+        if (!Number.isInteger(jobId) || jobId <= 0) return;
+        jobIdEl.value = String(jobId);
+
+        if (polling) clearInterval(polling);
+
+        const tick = async () => {
+          try {
+            const j = await apiJson(`/api/jobs/${jobId}`);
+            seriesStatusEl.textContent = `Job ${jobId}: ${j.status}`;
+            seriesResultEl.textContent = JSON.stringify(j, null, 2);
+            if (['done', 'failed'].includes(String(j.status))) {
+              clearInterval(polling);
+              polling = null;
+              await loadOverview().catch(() => {});
+            }
+          } catch (err) {
+            seriesStatusEl.textContent = `Job轮询失败: ${err.message || err}`;
+          }
+        };
+
+        await tick();
+        polling = setInterval(tick, 4000);
+      }
+
+      async function runSingle() {
+        const btn = document.getElementById('runSingle');
+        btn.disabled = true;
+        statusEl.textContent = 'Generating single episode...';
+        resultEl.textContent = '';
+        imagesWrap.innerHTML = '';
+
+        try {
+          const payload = quickPayload();
+          payload.renderImages = document.getElementById('renderImages').value === '1';
+          const data = await apiJson('/api/generate', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (Array.isArray(data.storyboard_images)) {
+            data.storyboard_images.forEach((img) => {
+              const card = document.createElement('div');
+              card.className = 'imgCard';
+              const title = document.createElement('div');
+              title.textContent = `Grid ${img.part}`;
+              title.style.fontWeight = '700';
+              title.style.marginBottom = '6px';
+              const image = document.createElement('img');
+              image.src = img.data_url;
+              const a = document.createElement('a');
+              a.href = img.data_url;
+              a.download = `EP${String(payload.episodeNo).padStart(2, '0')}-GRID-${img.part}.png`;
+              a.textContent = `下载 Grid ${img.part}`;
+              card.appendChild(title);
+              card.appendChild(image);
+              card.appendChild(a);
+              imagesWrap.appendChild(card);
+            });
+          }
+
+          statusEl.textContent = 'Done';
+          resultEl.textContent = JSON.stringify({
+            run_id: data.run_id,
+            output_path: data.output_path,
+            title: data.title,
+            overall_score: data.overall_score,
+            counts: data.counts,
+            panel_dialogues: data.panel_dialogues
+          }, null, 2);
+        } catch (err) {
+          statusEl.textContent = 'Failed';
+          resultEl.textContent = String(err.message || err);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      async function createSeriesAndBatch() {
+        const btn = document.getElementById('createSeries');
+        btn.disabled = true;
+        statusEl.textContent = 'Creating series and queueing batch...';
+
+        try {
+          const payload = quickPayload();
+          payload.startEpisode = Number(document.getElementById('batchStartQuick').value) || 1;
+          payload.endEpisode = Number(document.getElementById('batchEndQuick').value) || payload.quick.episodeCount;
+          const data = await apiJson('/api/jobs/create', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          statusEl.textContent = `Queued. series=${data.seriesId}, job=${data.jobId}`;
+          resultEl.textContent = JSON.stringify(data, null, 2);
+          seriesIdEl.value = String(data.seriesId);
+          await loadOverview().catch(() => {});
+          await startJobPolling(data.jobId);
+        } catch (err) {
+          statusEl.textContent = 'Failed';
+          resultEl.textContent = String(err.message || err);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      document.getElementById('runSingle').onclick = runSingle;
+      document.getElementById('createSeries').onclick = createSeriesAndBatch;
+
+      document.getElementById('loadSeries').onclick = async () => {
+        try {
+          seriesStatusEl.textContent = 'Loading series overview...';
+          await loadOverview();
+          seriesStatusEl.textContent = 'Overview loaded';
+        } catch (err) {
+          seriesStatusEl.textContent = `Failed: ${err.message || err}`;
+        }
+      };
+
+      document.getElementById('pollJob').onclick = async () => {
+        const jobId = Number(jobIdEl.value);
+        if (!Number.isInteger(jobId) || jobId <= 0) {
+          seriesStatusEl.textContent = '请先填写有效 Job ID';
+          return;
+        }
+        await startJobPolling(jobId);
+      };
+
+      document.getElementById('nextEpisode').onclick = async () => {
+        const seriesId = Number(seriesIdEl.value);
+        if (!Number.isInteger(seriesId) || seriesId <= 0) {
+          seriesStatusEl.textContent = '请先填写有效 Series ID';
+          return;
+        }
+
+        try {
+          seriesStatusEl.textContent = 'Queueing next episode...';
+          const data = await apiJson(`/api/series/${seriesId}/next-episode`, { method: 'POST' });
+          await loadOverview().catch(() => {});
+          await startJobPolling(data.jobId);
+        } catch (err) {
+          seriesStatusEl.textContent = `Failed: ${err.message || err}`;
+        }
+      };
+
+      document.getElementById('batchRun').onclick = async () => {
+        const seriesId = Number(seriesIdEl.value);
+        if (!Number.isInteger(seriesId) || seriesId <= 0) {
+          seriesStatusEl.textContent = '请先填写有效 Series ID';
+          return;
+        }
+
+        const startEpisode = Number(document.getElementById('batchStart').value);
+        const endEpisode = Number(document.getElementById('batchEnd').value);
+
+        try {
+          seriesStatusEl.textContent = 'Queueing batch range...';
+          const data = await apiJson(`/api/series/${seriesId}/batch`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ startEpisode, endEpisode })
+          });
+          await loadOverview().catch(() => {});
+          await startJobPolling(data.jobId);
+        } catch (err) {
+          seriesStatusEl.textContent = `Failed: ${err.message || err}`;
+        }
+      };
+
+      document.getElementById('loadBible').onclick = async () => {
+        const seriesId = Number(seriesIdEl.value);
+        if (!Number.isInteger(seriesId) || seriesId <= 0) {
+          seriesStatusEl.textContent = '请先填写有效 Series ID';
+          return;
+        }
+
+        try {
+          seriesStatusEl.textContent = 'Loading bible...';
+          const data = await apiJson(`/api/series/${seriesId}/bible`);
+          bibleEl.value = JSON.stringify(data.content_json || {}, null, 2);
+          bibleLockEl.checked = Boolean(data.locked);
+          seriesStatusEl.textContent = 'Bible loaded';
+        } catch (err) {
+          seriesStatusEl.textContent = `Failed: ${err.message || err}`;
+        }
+      };
+
+      document.getElementById('saveBible').onclick = async () => {
+        const seriesId = Number(seriesIdEl.value);
+        if (!Number.isInteger(seriesId) || seriesId <= 0) {
+          seriesStatusEl.textContent = '请先填写有效 Series ID';
+          return;
+        }
+
+        try {
+          const content = JSON.parse(bibleEl.value || '{}');
+          seriesStatusEl.textContent = 'Saving bible...';
+          const data = await apiJson(`/api/series/${seriesId}/bible`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ content, locked: bibleLockEl.checked })
+          });
+          seriesResultEl.textContent = JSON.stringify(data, null, 2);
+          seriesStatusEl.textContent = 'Bible saved';
+        } catch (err) {
+          seriesStatusEl.textContent = `Failed: ${err.message || err}`;
+        }
+      };
+    </script>
+  </body>
+</html>

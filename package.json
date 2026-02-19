@@ -1,0 +1,38 @@
+{
+  "name": "comic-pipeline-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/cli/index.ts",
+    "build": "tsc -p tsconfig.node.json",
+    "start": "node dist/cli/index.js",
+    "gen:ep": "tsx src/cli/index.ts gen:ep",
+    "test": "vitest run",
+    "worker": "tsx workers/comicWorker.ts",
+    "next:dev": "next dev",
+    "next:build": "next build",
+    "next:start": "next start"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.2",
+    "bullmq": "^5.34.10",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.4.1",
+    "next": "^15.2.0",
+    "pg": "^8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.16.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "prisma": "^6.16.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

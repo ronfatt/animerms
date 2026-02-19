@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: comic-pipeline-mvp
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:web
+    healthCheckPath: /
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: GEMINI_MODEL
+        value: gemini-1.5-pro
+      - key: OPENAI_TIMEOUT_MS
+        value: "30000"
+      - key: GEMINI_TIMEOUT_MS
+        value: "30000"
+      - key: LLM_MAX_RETRIES
+        value: "2"
+      - key: LOG_LEVEL
+        value: info

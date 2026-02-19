@@ -1,0 +1,30 @@
+{
+  "series_title": "Pahlawan Ombak",
+  "theme": "本土英雄觉醒，守护海上村落与家族秘密",
+  "core_conflict": "风暴不是自然灾害，而是被唤醒的古老海灵，反派想利用它夺取海域控制权",
+  "episode_count": 10,
+
+  "primary_language": "BM_SABAH",
+  "language_mode": "BM_SABAH",
+  "ratio": "16:9",
+
+  "style_mode": "LOCAL_X_ANIME",
+  "world": {
+    "location": "Sabah",
+    "subculture_focus": "Bajau 海上村落",
+    "recurring_motifs": ["stilt houses", "sea nomad boats", "storm clouds", "bioluminescent sea", "tribal textile patterns"]
+  },
+  "characters": [
+    {
+      "id": "hero",
+      "name": "Ari",
+      "role": "hero",
+      "short_bio": "年轻渔民，体内觉醒海潮之力",
+      "visual_signature": "tan skin, sharp anime eyes, short messy black hair, Bajau woven sash, teal glowing tattoo on forearm, lightweight tactical sarong pants",
+      "speech_style": "BM Sabah casual, short punchy lines, local slang"
+    }
+  ],
+  "episode_duration_sec": 120,
+  "grids_per_episode": 2,
+  "panels_per_grid": 9
+}
