@@ -4,6 +4,7 @@ import { comicQueue } from '../queue/queues';
 import { isPipelineStep, type PipelineStep } from '../pipeline/types';
 
 const queueAny = comicQueue as any;
+const ENQUEUE_TIMEOUT_MS = 8000;
 
 function nowLog(message: string): Prisma.JsonObject {
   return {
@@ -14,6 +15,24 @@ function nowLog(message: string): Prisma.JsonObject {
 
 function toQueueJobId(id: bigint): string {
   return `db-${id.toString()}`;
+}
+
+async function enqueueWithTimeout(
+  payload: {
+    dbJobId: string;
+    seriesId: number;
+    episodeId: number;
+    step: PipelineStep;
+    panelCount?: number;
+  },
+  queueJobId: string
+): Promise<void> {
+  await Promise.race([
+    queueAny.add('pipeline_step', payload, { jobId: queueJobId }),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Queue enqueue timeout after ${ENQUEUE_TIMEOUT_MS}ms`)), ENQUEUE_TIMEOUT_MS)
+    )
+  ]);
 }
 
 export async function createJobAndEnqueue(input: {
@@ -49,19 +68,27 @@ export async function createJobAndEnqueue(input: {
       throw new Error('seriesId and episodeId are required to enqueue comic job');
     }
 
-    await queueAny.add(
-      'pipeline_step',
-      {
-        dbJobId: created.id.toString(),
-        seriesId: Number(created.seriesId),
-        episodeId: Number(created.episodeId),
-        step: created.step as PipelineStep,
-        panelCount: input.panelCount
-      },
-      {
-        jobId: toQueueJobId(created.id)
-      }
-    );
+    try {
+      await enqueueWithTimeout(
+        {
+          dbJobId: created.id.toString(),
+          seriesId: Number(created.seriesId),
+          episodeId: Number(created.episodeId),
+          step: created.step as PipelineStep,
+          panelCount: input.panelCount
+        },
+        toQueueJobId(created.id)
+      );
+    } catch (error) {
+      await prisma.job.update({
+        where: { id: created.id },
+        data: {
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Failed to enqueue job'
+        }
+      });
+      throw error;
+    }
   }
 
   return { jobId: created.id.toString() };
@@ -93,8 +120,7 @@ export async function linkAndStartChain(jobIds: bigint[]): Promise<void> {
   const first = await prisma.job.findUnique({ where: { id: jobIds[0] } });
   if (!first || !first.seriesId || !first.episodeId) return;
 
-  await queueAny.add(
-    'pipeline_step',
+  await enqueueWithTimeout(
     {
       dbJobId: first.id.toString(),
       seriesId: Number(first.seriesId),
@@ -105,7 +131,7 @@ export async function linkAndStartChain(jobIds: bigint[]): Promise<void> {
           ? Number((first.logs as Prisma.JsonObject).panelCount)
           : undefined
     },
-    { jobId: toQueueJobId(first.id) }
+    toQueueJobId(first.id)
   );
 }
 
