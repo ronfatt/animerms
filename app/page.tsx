@@ -27,6 +27,15 @@ type StepStatus = {
   logs?: unknown;
 };
 
+type EpisodeJob = {
+  id: string;
+  step: StepKey;
+  status: string;
+  progress: number;
+  error?: string | null;
+  logs?: unknown;
+};
+
 export default function Page() {
   const [seriesId, setSeriesId] = useState('');
   const [title, setTitle] = useState('Pahlawan Ombak');
@@ -135,6 +144,54 @@ export default function Page() {
     void refreshEpisodes();
   }, [seriesId]);
 
+  useEffect(() => {
+    if (!episodeId) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const data = await getJson<{ jobs?: EpisodeJob[] }>(`/api/episodes/${episodeId}/jobs`);
+        if (cancelled) return;
+
+        const latestByStep = new Map<StepKey, EpisodeJob>();
+        for (const job of data.jobs || []) {
+          if (!latestByStep.has(job.step)) {
+            latestByStep.set(job.step, job);
+          }
+        }
+
+        setStepStatus((prev) => {
+          const next = { ...prev };
+          for (const step of STEP_ORDER.map((s) => s.key)) {
+            const hit = latestByStep.get(step);
+            if (hit) {
+              next[step] = {
+                jobId: hit.id,
+                status: hit.status,
+                progress: hit.progress,
+                error: hit.error,
+                logs: hit.logs
+              };
+            }
+          }
+          return next;
+        });
+      } catch {
+        // keep prior UI state on poll errors
+      }
+    };
+
+    void tick();
+    const timer = setInterval(() => {
+      void tick();
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [episodeId]);
+
   async function readResponse<T = Record<string, unknown>>(res: Response): Promise<T> {
     const contentType = res.headers.get('content-type') || '';
     const text = await res.text();
@@ -202,6 +259,14 @@ export default function Page() {
       outline: { panelCount }
     });
     setEpisodeId(String(data.episodeId));
+    setStepStatus({
+      director_plan: { status: 'idle', progress: 0 },
+      script_45s: { status: 'idle', progress: 0 },
+      panel_prompts: { status: 'idle', progress: 0 },
+      gemini_storyboard: { status: 'idle', progress: 0 },
+      motion_plan: { status: 'idle', progress: 0 },
+      audio_plan: { status: 'idle', progress: 0 }
+    });
     return String(data.episodeId);
   }
 
