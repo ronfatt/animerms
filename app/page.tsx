@@ -135,36 +135,59 @@ export default function Page() {
     void refreshEpisodes();
   }, [seriesId]);
 
-  async function postJson(url: string, body: unknown) {
+  async function readResponse<T = Record<string, unknown>>(res: Response): Promise<T> {
+    const contentType = res.headers.get('content-type') || '';
+    const text = await res.text();
+    if (contentType.includes('application/json')) {
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        throw new Error(`Invalid JSON response (HTTP ${res.status})`);
+      }
+    }
+    throw new Error(
+      `Non-JSON response (HTTP ${res.status}): ${text.slice(0, 180)}`
+    );
+  }
+
+  function pickErrorMessage(data: unknown, status: number): string {
+    if (data && typeof data === 'object' && 'error' in data) {
+      const value = (data as { error?: unknown }).error;
+      if (typeof value === 'string' && value.trim()) return value;
+    }
+    return `HTTP ${status}`;
+  }
+
+  async function postJson<T = Record<string, unknown>>(url: string, body: unknown): Promise<T> {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const data = await readResponse<T>(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res.status));
     return data;
   }
 
-  async function getJson(url: string) {
+  async function getJson<T = Record<string, unknown>>(url: string): Promise<T> {
     const res = await fetch(url);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const data = await readResponse<T>(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res.status));
     return data;
   }
 
   async function createSeries() {
     try {
       setStatusText('Creating series...');
-      const data = await postJson('/api/series', {
+      const data = await postJson<{ seriesId: string | number }>('/api/series', {
         title,
         totalEpisodes,
         ratio,
         languageMode,
         stylePreset
       });
-      setSeriesId(data.seriesId);
-      setStatusText(`Series created: ${data.seriesId}`);
+      setSeriesId(String(data.seriesId));
+      setStatusText(`Series created: ${String(data.seriesId)}`);
     } catch (error) {
       setStatusText(String(error));
     }
@@ -172,20 +195,25 @@ export default function Page() {
 
   async function ensureEpisode(): Promise<string> {
     if (!seriesId) throw new Error('Please create/select series first');
-    const data = await postJson('/api/episodes', {
+    const data = await postJson<{ episodeId: string | number }>('/api/episodes', {
       seriesId,
       epNumber,
       title: `Episode ${String(epNumber).padStart(2, '0')}`,
       outline: { panelCount }
     });
-    setEpisodeId(data.episodeId);
-    return data.episodeId;
+    setEpisodeId(String(data.episodeId));
+    return String(data.episodeId);
   }
 
   async function pollJob(step: StepKey, jobId: string) {
     const timer = setInterval(async () => {
       try {
-        const data = await getJson(`/api/jobs/${jobId}`);
+        const data = await getJson<{
+          status: string;
+          progress: number;
+          error?: string | null;
+          logs?: unknown;
+        }>(`/api/jobs/${jobId}`);
         setStepStatus((prev) => ({
           ...prev,
           [step]: {
@@ -207,7 +235,7 @@ export default function Page() {
     try {
       setStatusText(`Queueing ${step}...`);
       const epId = episodeId || (await ensureEpisode());
-      const data = await postJson('/api/jobs', {
+      const data = await postJson<{ jobId: string | number }>('/api/jobs', {
         seriesId,
         episodeId: epId,
         step,
@@ -215,10 +243,10 @@ export default function Page() {
       });
       setStepStatus((prev) => ({
         ...prev,
-        [step]: { jobId: data.jobId, status: 'queued', progress: 0 }
+        [step]: { jobId: String(data.jobId), status: 'queued', progress: 0 }
       }));
-      pollJob(step, data.jobId);
-      setStatusText(`Queued ${step}: ${data.jobId}`);
+      pollJob(step, String(data.jobId));
+      setStatusText(`Queued ${step}: ${String(data.jobId)}`);
     } catch (error) {
       setStatusText(String(error));
     }
@@ -228,7 +256,7 @@ export default function Page() {
     try {
       if (!seriesId) throw new Error('Please create/select series first');
       setStatusText('Queueing batch...');
-      const data = await postJson(`/api/series/${seriesId}/batch`, {
+      const data = await postJson<{ fromEp: number; toEp: number }>(`/api/series/${seriesId}/batch`, {
         fromEp: batchFrom,
         toEp: batchTo,
         steps: batchSteps,
@@ -244,7 +272,9 @@ export default function Page() {
   async function refreshEpisodes() {
     try {
       if (!seriesId) return;
-      const data = await getJson(`/api/series/${seriesId}/episodes`);
+      const data = await getJson<{ episodes?: Array<{ id: string; epNumber: number; title: string | null; status: string }> }>(
+        `/api/series/${seriesId}/episodes`
+      );
       setEpisodes(data.episodes || []);
     } catch (error) {
       setStatusText(String(error));
