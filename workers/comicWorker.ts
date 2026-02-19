@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import type { PipelineStep } from '../lib/pipeline/types';
 import { runPipelineStep } from '../lib/pipeline/runStep';
+import { checkDbObjects, getDbFingerprint } from '../lib/db/health';
 
 const dispatchMode = String(process.env.JOB_DISPATCH_MODE ?? 'bullmq').toLowerCase();
 const concurrency = Number(process.env.COMIC_WORKER_CONCURRENCY ?? 2);
@@ -111,6 +112,16 @@ async function runDbJob(dbJobId: bigint, step: PipelineStep, seriesId: bigint, e
 }
 
 async function runDbPollLoop() {
+  const fp = getDbFingerprint();
+  console.log(`[comic-worker] ${fp}`);
+  const objects = await checkDbObjects();
+  if (!objects.jobsTable) {
+    throw new Error(`[comic-worker] missing table public.jobs (${fp})`);
+  }
+  if (!objects.assetTypeExists) {
+    throw new Error(`[comic-worker] missing enum public.AssetType (${fp})`);
+  }
+
   console.log(
     `[comic-worker] mode=db_poll concurrency=${concurrency} intervalMs=${dbPollIntervalMs} retries=${maxAttempts}`
   );
@@ -160,6 +171,16 @@ async function runDbPollLoop() {
 async function runBullmqWorker() {
   const { COMIC_QUEUE_NAME } = await import('../lib/queue/queues');
   const { redisConnection } = await import('../lib/queue/redis');
+
+  const fp = getDbFingerprint();
+  console.log(`[comic-worker] ${fp}`);
+  const objects = await checkDbObjects();
+  if (!objects.jobsTable) {
+    throw new Error(`[comic-worker] missing table public.jobs (${fp})`);
+  }
+  if (!objects.assetTypeExists) {
+    throw new Error(`[comic-worker] missing enum public.AssetType (${fp})`);
+  }
 
   new Worker(
     COMIC_QUEUE_NAME,

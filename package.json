@@ -12,7 +12,8 @@
     "worker": "tsx workers/comicWorker.ts",
     "next:dev": "next dev",
     "next:build": "next build",
-    "next:start": "next start"
+    "next:start": "next start",
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.16.2",
