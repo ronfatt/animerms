@@ -273,7 +273,7 @@ export default function Page() {
     try {
       if (!seriesId) return;
       const data = await getJson<{ episodes?: Array<{ id: string; epNumber: number; title: string | null; status: string }> }>(
-        `/api/series/${seriesId}/episodes`
+        `/api/episodes/by-series?seriesId=${encodeURIComponent(seriesId)}`
       );
       setEpisodes(data.episodes || []);
     } catch (error) {
