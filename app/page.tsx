@@ -150,7 +150,9 @@ export default function Page() {
 
     const tick = async () => {
       try {
-        const data = await getJson<{ jobs?: EpisodeJob[] }>(`/api/episodes/${episodeId}/jobs`);
+        const data = await getJson<{ jobs?: EpisodeJob[] }>(
+          `/api/jobs/by-episode?episodeId=${encodeURIComponent(episodeId)}`
+        );
         if (cancelled) return;
 
         const latestByStep = new Map<StepKey, EpisodeJob>();
