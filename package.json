@@ -13,7 +13,8 @@
     "next:dev": "next dev",
     "next:build": "next build",
     "next:start": "next start",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "reset:data": "node scripts/reset-data.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.16.2",
