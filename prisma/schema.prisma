@@ -11,6 +11,8 @@ enum AssetType {
   image_raw
   image_typeset
   video
+
+  @@map("asset_type")
 }
 
 model Series {
