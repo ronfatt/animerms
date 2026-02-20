@@ -25,7 +25,7 @@ async function main() {
   try {
     console.log(`[doctor] ${getDbFingerprint()}`);
     const jobsRows = await prisma.$queryRawUnsafe(
-      "SELECT to_regclass('public.jobs') AS jobs_table"
+      "SELECT to_regclass('public.jobs')::text AS jobs_table"
     );
     const enumRows = await prisma.$queryRawUnsafe(`
       SELECT EXISTS (

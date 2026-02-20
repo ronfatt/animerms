@@ -25,7 +25,7 @@ export async function checkDbObjects(): Promise<{
   assetTypeExists: boolean;
 }> {
   const jobsRows = await prisma.$queryRawUnsafe<Array<{ jobs_table: string | null }>>(
-    "SELECT to_regclass('public.jobs') AS jobs_table"
+    "SELECT to_regclass('public.jobs')::text AS jobs_table"
   );
   const enumRows = await prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(
     `
