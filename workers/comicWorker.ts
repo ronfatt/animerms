@@ -11,6 +11,8 @@ const dispatchMode =
 const concurrency = Number(process.env.COMIC_WORKER_CONCURRENCY ?? 2);
 const dbPollIntervalMs = Number(process.env.DB_POLL_INTERVAL_MS ?? 1500);
 const maxAttempts = Number(process.env.JOB_MAX_RETRIES ?? 3);
+const stepTimeoutMs = Number(process.env.STEP_TIMEOUT_MS ?? 300000);
+const staleRunningMs = Number(process.env.STALE_RUNNING_MS ?? 180000);
 
 function appendEvent(logs: Prisma.JsonObject | null, message: string): Prisma.JsonObject {
   const current = (logs ?? {}) as Prisma.JsonObject;
@@ -75,7 +77,12 @@ async function runDbJob(dbJobId: bigint, step: PipelineStep, seriesId: bigint, e
   });
 
   try {
-    const result = await runPipelineStep(step, { seriesId, episodeId, panelCount });
+    const result = await Promise.race([
+      runPipelineStep(step, { seriesId, episodeId, panelCount }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`step timeout after ${stepTimeoutMs}ms`)), stepTimeoutMs);
+      })
+    ]);
     const doneLogs = appendEvent(runningLogs, result.message);
 
     await prisma.job.update({
@@ -113,6 +120,35 @@ async function runDbJob(dbJobId: bigint, step: PipelineStep, seriesId: bigint, e
   }
 }
 
+async function recycleStaleRunningJobs(): Promise<void> {
+  const cutoff = new Date(Date.now() - staleRunningMs);
+  const staleJobs = await prisma.job.findMany({
+    where: {
+      status: 'running',
+      updatedAt: { lt: cutoff }
+    },
+    select: { id: true, logs: true }
+  });
+  if (staleJobs.length === 0) return;
+
+  for (const job of staleJobs) {
+    const logs = appendEvent(
+      job.logs as Prisma.JsonObject | null,
+      `recycled stale running job after ${staleRunningMs}ms`
+    );
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: 'queued',
+        progress: 0,
+        logs
+      }
+    });
+  }
+
+  console.warn(`[comic-worker] recycled stale running jobs: ${staleJobs.length}`);
+}
+
 async function runDbPollLoop() {
   const fp = getDbFingerprint();
   console.log(`[comic-worker] ${fp}`);
@@ -125,10 +161,11 @@ async function runDbPollLoop() {
   }
 
   console.log(
-    `[comic-worker] mode=db_poll concurrency=${concurrency} intervalMs=${dbPollIntervalMs} retries=${maxAttempts}`
+    `[comic-worker] mode=db_poll concurrency=${concurrency} intervalMs=${dbPollIntervalMs} retries=${maxAttempts} stepTimeoutMs=${stepTimeoutMs} staleRunningMs=${staleRunningMs}`
   );
 
   setInterval(async () => {
+    await recycleStaleRunningJobs();
     for (let i = 0; i < concurrency; i++) {
       try {
         const candidate = await prisma.job.findFirst({
