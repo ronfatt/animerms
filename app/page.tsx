@@ -12,7 +12,7 @@ type StepKey =
 
 const STEP_ORDER: Array<{ key: StepKey; label: string }> = [
   { key: 'director_plan', label: '1) Generate Director Plan' },
-  { key: 'script_45s', label: '2) Generate 45s Script' },
+  { key: 'script_45s', label: '2) Generate 120s Episode Script' },
   { key: 'panel_prompts', label: '3) Generate Panel Prompts' },
   { key: 'gemini_storyboard', label: '4) Generate Gemini Storyboard' },
   { key: 'motion_plan', label: '5) Generate Motion Plan' },
@@ -46,7 +46,7 @@ export default function Page() {
 
   const [epNumber, setEpNumber] = useState(1);
   const [episodeId, setEpisodeId] = useState('');
-  const [panelCount, setPanelCount] = useState(9);
+  const [panelCount, setPanelCount] = useState(18);
 
   const [batchFrom, setBatchFrom] = useState(1);
   const [batchTo, setBatchTo] = useState(3);
@@ -386,10 +386,11 @@ export default function Page() {
           <h2>Episode Builder</h2>
           <label>Episode Number</label>
           <input type="number" min={1} value={epNumber} onChange={(e) => setEpNumber(Number(e.target.value))} style={{ width: '100%', marginBottom: 8 }} />
-          <label>Panel Count (9 or 12)</label>
+          <label>Panel Count (recommended 18)</label>
           <select value={panelCount} onChange={(e) => setPanelCount(Number(e.target.value))} style={{ width: '100%', marginBottom: 8 }}>
             <option value={9}>9</option>
             <option value={12}>12</option>
+            <option value={18}>18</option>
           </select>
           <button onClick={async () => setEpisodeId(await ensureEpisode())}>Prepare Episode</button>
           <div style={{ marginTop: 8 }}>Episode ID: {episodeId || '-'}</div>

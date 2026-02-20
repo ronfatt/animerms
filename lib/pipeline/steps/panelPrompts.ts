@@ -4,6 +4,13 @@ import type { StepInput } from '../types';
 type Beat = {
   t?: [number, number];
   purpose?: string;
+  summary?: string;
+};
+
+type ScriptDialogue = {
+  t_sec?: number;
+  line?: string;
+  subtitle?: string;
 };
 
 type PromptPack = {
@@ -13,10 +20,22 @@ type PromptPack = {
   narration: string;
 };
 
-const FRAMINGS = ['WS', 'MS', 'CU', 'MS', 'CU', 'WS', 'MS', 'CU', 'MS'] as const;
-const ANGLES = ['eye', 'low', 'eye', 'high', 'dutch', 'eye', 'low', 'eye', 'high'] as const;
-const MOVES = ['static', 'push_in', 'pan', 'tilt', 'handheld', 'orbit', 'pull_out', 'push_in', 'handheld'] as const;
+const FRAMINGS = ['WS', 'MS', 'CU', 'MS', 'CU', 'WS', 'MS', 'CU', 'MS', 'CU'] as const;
+const ANGLES = ['eye', 'low', 'eye', 'high', 'dutch', 'eye', 'low', 'eye', 'high', 'dutch'] as const;
+const MOVES = ['static', 'push_in', 'pan', 'tilt', 'handheld', 'orbit', 'pull_out', 'push_in', 'handheld', 'tilt'] as const;
 const FX = ['wind', 'wave spray', 'rain mist', 'dust', 'neon flicker'] as const;
+const ACTION_VERBS = [
+  'dash',
+  'scan',
+  'signal',
+  'brace',
+  'evade',
+  'counter',
+  'rescue',
+  'confront',
+  'leap',
+  'anchor'
+] as const;
 
 function shortPurpose(input: string | undefined): string {
   const value = (input ?? '').toLowerCase();
@@ -50,16 +69,20 @@ function pickFx(n: number): string[] {
 function buildPrompt(input: {
   n: number;
   panelCount: number;
+  epNumber: number;
   ratio: string;
   title: string;
   stylePreset: string;
   languageMode: string;
   beat: Beat | undefined;
+  dialogue: ScriptDialogue | undefined;
 }): PromptPack {
   const purpose = shortPurpose(input.beat?.purpose);
-  const framing = FRAMINGS[(input.n - 1) % FRAMINGS.length];
-  const angle = ANGLES[(input.n - 1) % ANGLES.length];
-  const movement = MOVES[(input.n - 1) % MOVES.length];
+  const seed = input.epNumber * 17 + input.n;
+  const framing = FRAMINGS[seed % FRAMINGS.length];
+  const angle = ANGLES[seed % ANGLES.length];
+  const movement = MOVES[seed % MOVES.length];
+  const actionVerb = ACTION_VERBS[seed % ACTION_VERBS.length];
   const fx = pickFx(input.n).join(', ');
 
   const ratioInstruction =
@@ -70,20 +93,24 @@ function buildPrompt(input: {
   const prompt = [
     `Panel ${input.n}/${input.panelCount} for episode "${input.title}".`,
     `Beat purpose: ${purpose}.`,
+    input.beat?.summary ? `Beat summary: ${input.beat.summary}` : '',
     `[CAMERA] ${framing} ${angle}, ${movement}.`,
-    '[ACTION] clear action verb from this beat, with character momentum.',
+    `[ACTION] ${actionVerb} with clear body mechanics and emotional intent.`,
     `[ENV] Sabah coastal village mood; environment fx: ${fx}.`,
     `[STYLE] ${input.stylePreset}, semi-real anime cinematic, consistent character outfit and face.`,
-    `[LANGUAGE] captions/dialogue tone in ${input.languageMode}.`,
+    `[LANGUAGE] tone aligned to ${input.languageMode}, no text rendered in image.`,
     `[RATIO] ${ratioInstruction}.`
-  ].join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 
+  const dialogueLine = (input.dialogue?.line ?? input.dialogue?.subtitle ?? '').trim();
   return {
     prompt,
     negativePrompt:
       'deformed face, extra limbs, random outfit changes, unreadable text, tiny subject, flat composition',
-    dialogue: dialogueByPurpose(purpose, input.n),
-    narration: narrationByPurpose(purpose, input.n)
+    dialogue: dialogueLine || dialogueByPurpose(purpose, input.n),
+    narration: input.beat?.summary?.trim() || narrationByPurpose(purpose, input.n)
   };
 }
 
@@ -94,11 +121,24 @@ function parseBeats(script45s: unknown): Beat[] {
   return maybe.filter((x) => typeof x === 'object' && !!x) as Beat[];
 }
 
+function parseDialogues(script45s: unknown): ScriptDialogue[] {
+  if (!script45s || typeof script45s !== 'object') return [];
+  const maybe = (script45s as { dialogues?: unknown }).dialogues;
+  if (!Array.isArray(maybe)) return [];
+  return maybe.filter((x) => typeof x === 'object' && !!x) as ScriptDialogue[];
+}
+
 function pickBeat(beats: Beat[], n: number, panelCount: number): Beat | undefined {
   if (beats.length === 0) return undefined;
   const scaled = ((n - 1) / Math.max(1, panelCount - 1)) * beats.length;
   const idx = Math.min(beats.length - 1, Math.floor(scaled));
   return beats[idx];
+}
+
+function pickDialogue(dialogues: ScriptDialogue[], n: number, panelCount: number): ScriptDialogue | undefined {
+  if (dialogues.length === 0) return undefined;
+  const idx = Math.min(dialogues.length - 1, Math.floor(((n - 1) / Math.max(1, panelCount - 1)) * dialogues.length));
+  return dialogues[idx];
 }
 
 async function resetPanelImageRefs(episodeId: bigint): Promise<void> {
@@ -130,9 +170,10 @@ export async function panelPromptsStep(input: StepInput): Promise<{ progress: nu
       ? input.panelCount
       : Number.isInteger(fromOutline) && fromOutline
       ? fromOutline
-      : 9;
+      : 18;
 
   const beats = parseBeats(episode.script45s);
+  const dialogues = parseDialogues(episode.script45s);
 
   await resetPanelImageRefs(input.episodeId);
 
@@ -140,11 +181,13 @@ export async function panelPromptsStep(input: StepInput): Promise<{ progress: nu
     const p = buildPrompt({
       n: i,
       panelCount,
+      epNumber: episode.epNumber,
       ratio: episode.series.ratio,
       title: episode.title ?? `Episode ${episode.epNumber}`,
       stylePreset: episode.series.stylePreset,
       languageMode: episode.series.languageMode,
-      beat: pickBeat(beats, i, panelCount)
+      beat: pickBeat(beats, i, panelCount),
+      dialogue: pickDialogue(dialogues, i, panelCount)
     });
 
     await prisma.panel.upsert({
