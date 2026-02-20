@@ -20,12 +20,17 @@ function getEnv(name: string): string {
   return value;
 }
 
-async function generateGeminiImage(prompt: string, label: string): Promise<GeminiImageResult> {
+function normalizeAspectRatio(ratio: string): '9:16' | '16:9' {
+  return ratio === '9:16' ? '9:16' : '16:9';
+}
+
+async function generateGeminiImage(prompt: string, label: string, ratio: string): Promise<GeminiImageResult> {
   const apiKey = getEnv('GEMINI_API_KEY');
   const configuredModel = process.env.GEMINI_IMAGE_MODEL?.trim();
   const models = configuredModel
     ? [configuredModel, ...DEFAULT_IMAGE_MODELS.filter((m) => m !== configuredModel)]
     : DEFAULT_IMAGE_MODELS;
+  const aspectRatio = normalizeAspectRatio(ratio);
 
   let lastError: Error | null = null;
 
@@ -36,10 +41,8 @@ async function generateGeminiImage(prompt: string, label: string): Promise<Gemin
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
       try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const makeBody = (withImageConfig: boolean) =>
+          JSON.stringify({
             contents: [
               {
                 role: 'user',
@@ -47,18 +50,38 @@ async function generateGeminiImage(prompt: string, label: string): Promise<Gemin
               }
             ],
             generationConfig: {
-              responseModalities: ['TEXT', 'IMAGE']
+              responseModalities: ['TEXT', 'IMAGE'],
+              ...(withImageConfig ? { imageConfig: { aspectRatio } } : {})
             }
-          }),
+          });
+
+        let response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: makeBody(true),
           signal: controller.signal
         });
-        clearTimeout(timeout);
 
         if (!response.ok) {
-          const body = await response.text();
+          let body = await response.text();
+          const unsupportedImageConfig =
+            response.status === 400 &&
+            (body.includes('imageConfig') || body.includes('Unknown name') || body.includes('aspectRatio'));
+          if (unsupportedImageConfig) {
+            response = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: makeBody(false),
+              signal: controller.signal
+            });
+            body = await response.text();
+          }
+
           if (response.status === 404) {
+            clearTimeout(timeout);
             throw new Error(`Gemini model not found (${model})`);
           }
+          clearTimeout(timeout);
           throw new Error(`Gemini image request failed (${response.status}, ${model}): ${body}`);
         }
 
@@ -82,6 +105,7 @@ async function generateGeminiImage(prompt: string, label: string): Promise<Gemin
           }
         }
 
+        clearTimeout(timeout);
         throw new Error(`Gemini image model returned no image bytes (${label}, ${model})`);
       } catch (error) {
         clearTimeout(timeout);
@@ -103,8 +127,6 @@ function buildPanelImagePrompt(input: {
   panelNumber: number;
   prompt: string | null;
   negativePrompt: string | null;
-  dialogue: string | null;
-  narration: string | null;
 }): string {
   const ratioCue =
     input.ratio === '9:16'
@@ -115,10 +137,9 @@ function buildPanelImagePrompt(input: {
     `Create one storyboard panel image for "${input.seriesTitle}".`,
     ratioCue,
     `Panel #${input.panelNumber}: ${input.prompt ?? 'Sabah coastal action scene'}.`,
-    `Dialogue tone: ${input.dialogue ?? 'short comic-like line'}.`,
-    `Narration hint: ${input.narration ?? 'none'}.`,
     'Style: LOCAL_X_ANIME, semi-real anime cinematic lighting, Sabah coastal local flavor.',
     `Negative constraints: ${input.negativePrompt ?? 'deformed face, extra limbs, unreadable text'}.`,
+    'No text at all in image: no letters, no words, no subtitles, no logos, no speech bubbles, no caption boxes.',
     'Avoid distorted anatomy and random costume changes.'
   ].join(' ');
 }
@@ -167,11 +188,13 @@ export async function geminiStoryboardStep(input: StepInput): Promise<{ progress
         ratio: episode.series.ratio,
         panelNumber: panel.panelNumber,
         prompt: panel.prompt,
-        negativePrompt: panel.negativePrompt,
-        dialogue: panel.dialogue,
-        narration: panel.narration
+        negativePrompt: panel.negativePrompt
       });
-      const image = await generateGeminiImage(prompt, `ep${input.episodeId.toString()}-p${panel.panelNumber}`);
+      const image = await generateGeminiImage(
+        prompt,
+        `ep${input.episodeId.toString()}-p${panel.panelNumber}`,
+        episode.series.ratio
+      );
 
       const previousCount = await prisma.asset.count({
         where: { panelId: panel.id, type: 'image_raw' }
