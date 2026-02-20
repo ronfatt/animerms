@@ -23,7 +23,9 @@ function getEnv(name: string): string {
 async function generateGeminiImage(prompt: string, label: string): Promise<GeminiImageResult> {
   const apiKey = getEnv('GEMINI_API_KEY');
   const configuredModel = process.env.GEMINI_IMAGE_MODEL?.trim();
-  const models = configuredModel ? [configuredModel] : DEFAULT_IMAGE_MODELS;
+  const models = configuredModel
+    ? [configuredModel, ...DEFAULT_IMAGE_MODELS.filter((m) => m !== configuredModel)]
+    : DEFAULT_IMAGE_MODELS;
 
   let lastError: Error | null = null;
 
