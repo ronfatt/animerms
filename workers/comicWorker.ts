@@ -5,7 +5,9 @@ import type { PipelineStep } from '../lib/pipeline/types';
 import { runPipelineStep } from '../lib/pipeline/runStep';
 import { checkDbObjects, getDbFingerprint } from '../lib/db/health';
 
-const dispatchMode = String(process.env.JOB_DISPATCH_MODE ?? 'bullmq').toLowerCase();
+const requestedDispatchMode = String(process.env.JOB_DISPATCH_MODE ?? 'bullmq').toLowerCase();
+const dispatchMode =
+  requestedDispatchMode === 'bullmq' && !process.env.REDIS_URL ? 'db_poll' : requestedDispatchMode;
 const concurrency = Number(process.env.COMIC_WORKER_CONCURRENCY ?? 2);
 const dbPollIntervalMs = Number(process.env.DB_POLL_INTERVAL_MS ?? 1500);
 const maxAttempts = Number(process.env.JOB_MAX_RETRIES ?? 3);
@@ -207,6 +209,9 @@ async function runBullmqWorker() {
 }
 
 if (dispatchMode === 'db_poll') {
+  if (requestedDispatchMode === 'bullmq' && !process.env.REDIS_URL) {
+    console.warn('[comic-worker] REDIS_URL missing, forcing dispatch mode to db_poll');
+  }
   void runDbPollLoop();
 } else {
   void runBullmqWorker();
