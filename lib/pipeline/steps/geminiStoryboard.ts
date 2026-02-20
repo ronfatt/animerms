@@ -8,6 +8,11 @@ type GeminiImageResult = {
 
 const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS ?? 30000);
 const GEMINI_RETRIES = Number(process.env.LLM_MAX_RETRIES ?? 2);
+const DEFAULT_IMAGE_MODELS = [
+  'gemini-2.5-flash-image',
+  'gemini-3-pro-image-preview',
+  'gemini-2.0-flash-preview-image-generation'
+];
 
 function getEnv(name: string): string {
   const value = process.env[name];
@@ -17,65 +22,73 @@ function getEnv(name: string): string {
 
 async function generateGeminiImage(prompt: string, label: string): Promise<GeminiImageResult> {
   const apiKey = getEnv('GEMINI_API_KEY');
-  const model = process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.0-flash-preview-image-generation';
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const configuredModel = process.env.GEMINI_IMAGE_MODEL?.trim();
+  const models = configuredModel ? [configuredModel] : DEFAULT_IMAGE_MODELS;
 
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt <= GEMINI_RETRIES; attempt++) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }]
+  for (const model of models) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    for (let attempt = 0; attempt <= GEMINI_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: prompt }]
+              }
+            ],
+            generationConfig: {
+              responseModalities: ['TEXT', 'IMAGE']
             }
-          ],
-          generationConfig: {
-            responseModalities: ['TEXT', 'IMAGE']
+          }),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+          const body = await response.text();
+          if (response.status === 404) {
+            throw new Error(`Gemini model not found (${model})`);
           }
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-
-      if (!response.ok) {
-        throw new Error(`Gemini image request failed (${response.status}): ${await response.text()}`);
-      }
-
-      const payload = (await response.json()) as {
-        candidates?: Array<{
-          content?: {
-            parts?: Array<{
-              inlineData?: { mimeType?: string; data?: string };
-              inline_data?: { mime_type?: string; data?: string };
-            }>;
-          };
-        }>;
-      };
-
-      const parts = payload.candidates?.[0]?.content?.parts ?? [];
-      for (const part of parts) {
-        const data = part.inlineData?.data ?? part.inline_data?.data;
-        const mimeType = part.inlineData?.mimeType ?? part.inline_data?.mime_type ?? 'image/png';
-        if (data) {
-          return { mimeType, base64Data: data };
+          throw new Error(`Gemini image request failed (${response.status}, ${model}): ${body}`);
         }
-      }
 
-      throw new Error(`Gemini image model returned no image bytes (${label})`);
-    } catch (error) {
-      clearTimeout(timeout);
-      lastError = error instanceof Error ? error : new Error(String(error));
-      if (attempt >= GEMINI_RETRIES) {
-        break;
+        const payload = (await response.json()) as {
+          candidates?: Array<{
+            content?: {
+              parts?: Array<{
+                inlineData?: { mimeType?: string; data?: string };
+                inline_data?: { mime_type?: string; data?: string };
+              }>;
+            };
+          }>;
+        };
+
+        const parts = payload.candidates?.[0]?.content?.parts ?? [];
+        for (const part of parts) {
+          const data = part.inlineData?.data ?? part.inline_data?.data;
+          const mimeType = part.inlineData?.mimeType ?? part.inline_data?.mime_type ?? 'image/png';
+          if (data) {
+            return { mimeType, base64Data: data };
+          }
+        }
+
+        throw new Error(`Gemini image model returned no image bytes (${label}, ${model})`);
+      } catch (error) {
+        clearTimeout(timeout);
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt >= GEMINI_RETRIES) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
       }
-      await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
     }
   }
 
