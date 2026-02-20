@@ -135,6 +135,7 @@ export async function geminiStoryboardStep(input: StepInput): Promise<{ progress
   }
 
   const failedPanelNumbers: number[] = [];
+  const failedReasons: Array<{ panel: number; reason: string }> = [];
   let doneCount = 0;
   const episode = await prisma.episode.findUnique({
     where: { id: input.episodeId },
@@ -178,14 +179,25 @@ export async function geminiStoryboardStep(input: StepInput): Promise<{ progress
         }
       });
       doneCount += 1;
-    } catch {
+    } catch (error) {
       failedPanelNumbers.push(panel.panelNumber);
+      const reason = error instanceof Error ? error.message : String(error);
+      failedReasons.push({
+        panel: panel.panelNumber,
+        reason: reason.slice(0, 280)
+      });
       await prisma.panel.update({ where: { id: panel.id }, data: { status: 'failed' } });
     }
   }
 
   if (failedPanelNumbers.length > 0) {
-    throw new Error(`gemini_storyboard failed panels: ${failedPanelNumbers.join(', ')}`);
+    const reasonPreview = failedReasons
+      .slice(0, 3)
+      .map((x) => `P${x.panel}: ${x.reason}`)
+      .join(' | ');
+    throw new Error(
+      `gemini_storyboard failed panels: ${failedPanelNumbers.join(', ')}; reasons: ${reasonPreview}`
+    );
   }
 
   return {
