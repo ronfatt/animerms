@@ -92,7 +92,7 @@ export default function Page() {
         if (s.stylePreset) setStylePreset(s.stylePreset);
         if (Number.isInteger(s.epNumber)) setEpNumber(Number(s.epNumber));
         if (s.episodeId) setEpisodeId(s.episodeId);
-        if (Number.isInteger(s.panelCount)) setPanelCount(Number(s.panelCount));
+        if (Number.isInteger(s.panelCount)) setPanelCount(Math.max(18, Number(s.panelCount)));
         if (Number.isInteger(s.batchFrom)) setBatchFrom(Number(s.batchFrom));
         if (Number.isInteger(s.batchTo)) setBatchTo(Number(s.batchTo));
         if (Array.isArray(s.batchSteps) && s.batchSteps.length > 0) setBatchSteps(s.batchSteps);
@@ -386,11 +386,10 @@ export default function Page() {
           <h2>Episode Builder</h2>
           <label>Episode Number</label>
           <input type="number" min={1} value={epNumber} onChange={(e) => setEpNumber(Number(e.target.value))} style={{ width: '100%', marginBottom: 8 }} />
-          <label>Panel Count (recommended 18)</label>
+          <label>Panel Count (fixed minimum 18)</label>
           <select value={panelCount} onChange={(e) => setPanelCount(Number(e.target.value))} style={{ width: '100%', marginBottom: 8 }}>
-            <option value={9}>9</option>
-            <option value={12}>12</option>
             <option value={18}>18</option>
+            <option value={24}>24</option>
           </select>
           <button onClick={async () => setEpisodeId(await ensureEpisode())}>Prepare Episode</button>
           <div style={{ marginTop: 8 }}>Episode ID: {episodeId || '-'}</div>

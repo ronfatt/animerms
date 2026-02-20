@@ -37,26 +37,61 @@ function buildDialogues(input: {
   goal: string;
   obstacle: string;
   reveal: string;
+  prevCliffhanger: string | null;
 }): Dialogue[] {
+  const seed = input.epNumber * 13;
+  const openers = [
+    'Arus berubah, semua fokus!',
+    'Dengar sini, angin tak normal.',
+    'Kita sambung dari tadi, cepat.',
+    'Ombak kasi amaran lagi.',
+    'Jangan leka, ini serius.'
+  ];
+  const directives = [
+    'Formasi rapat, ikut kiri.',
+    'Pecah dua kumpulan, sekarang.',
+    'Lindung warga dulu, cepat.',
+    'Tarik musuh ke jeti lama.',
+    'Kunci laluan dan tunggu isyarat.'
+  ];
+  const pressure = [
+    'Masa kita makin sempit.',
+    'Kalau lambat, habis kampung.',
+    'Musuh tekan dari belakang.',
+    'Tenaga kita tinggal sikit.',
+    'Ribut ni sengaja dipanggil.'
+  ];
+  const resolve = [
+    'Aku takkan lari kali ni.',
+    'Kita habiskan malam ni.',
+    'Aku pegang depan, kau backup.',
+    'Ini maruah kampung kita.',
+    'Kita lawan sampai habis.'
+  ];
+
+  const continuityLine = input.prevCliffhanger
+    ? `Sambung tadi: ${input.prevCliffhanger}.`
+    : `Episod ${String(input.epNumber).padStart(2, '0')} bermula panas.`;
+
   const base = [
-    `Dengar! Ombak bawa tanda baharu.`,
-    `Kita tiada masa, gerak sekarang.`,
-    `Jangan panik, ikut aku.`,
-    `Musuh dekat, jangan pecah formasi.`,
-    `Aku nampak jalan masuk.`,
-    `Kalau gagal, kampung kita tenggelam.`,
-    `Bukan nasib, ini perang.`,
-    `Kau lindungi keluarga dulu.`,
-    `Aku tarik perhatian mereka.`,
-    `Roh laut mula bangun.`,
-    `Kunci ada pada ${input.goal}.`,
+    continuityLine,
+    pick(openers, seed + 1),
+    pick(directives, seed + 2),
+    pick(pressure, seed + 3),
+    `Target kita: ${input.goal}.`,
     `Halangan utama: ${input.obstacle}.`,
-    `Dengar baik, ${input.reveal}.`,
-    `Kita ubah plan sekarang.`,
-    `Aku takkan undur lagi.`,
-    `Semua ikut isyarat tangan.`,
-    `Ini belum tamat.`,
-    `Malam ni kita balas semula.`
+    'Aku nampak celah untuk tembus.',
+    'Jangan pecah rentak pasukan.',
+    'Musuh cuba putuskan komunikasi.',
+    'Kita guna laluan sempit kiri.',
+    'Aku tarik perhatian depan.',
+    'Kau lindung belakang bot.',
+    `Rahsia terdedah: ${input.reveal}.`,
+    pick(resolve, seed + 4),
+    'Semua ikut isyarat tangan aku.',
+    'Buat keputusan sekarang, jangan tunggu.',
+    'Ini belum tamat.',
+    `Penutup EP${String(input.epNumber).padStart(2, '0')}: kita naikkan serangan.`
   ];
 
   return base.map((line, i) => ({
@@ -195,7 +230,8 @@ export async function script45sStep(input: StepInput): Promise<{ progress: numbe
     stage,
     goal,
     obstacle,
-    reveal
+    reveal,
+    prevCliffhanger
   });
 
   const payload = {

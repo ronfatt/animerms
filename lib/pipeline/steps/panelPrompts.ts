@@ -13,6 +13,14 @@ type ScriptDialogue = {
   subtitle?: string;
 };
 
+type ScriptMeta = {
+  episode_goal?: string;
+  obstacle?: string;
+  reveal?: string;
+  stage?: string;
+  continuity_from_prev?: string | null;
+};
+
 type PromptPack = {
   prompt: string;
   negativePrompt: string;
@@ -76,6 +84,7 @@ function buildPrompt(input: {
   languageMode: string;
   beat: Beat | undefined;
   dialogue: ScriptDialogue | undefined;
+  scriptMeta: ScriptMeta | undefined;
 }): PromptPack {
   const purpose = shortPurpose(input.beat?.purpose);
   const seed = input.epNumber * 17 + input.n;
@@ -92,6 +101,10 @@ function buildPrompt(input: {
 
   const prompt = [
     `Panel ${input.n}/${input.panelCount} for episode "${input.title}".`,
+    input.scriptMeta?.stage ? `Arc stage: ${input.scriptMeta.stage}.` : '',
+    input.scriptMeta?.episode_goal ? `Episode goal: ${input.scriptMeta.episode_goal}.` : '',
+    input.scriptMeta?.obstacle ? `Current obstacle: ${input.scriptMeta.obstacle}.` : '',
+    input.scriptMeta?.reveal ? `Hidden reveal cue: ${input.scriptMeta.reveal}.` : '',
     `Beat purpose: ${purpose}.`,
     input.beat?.summary ? `Beat summary: ${input.beat.summary}` : '',
     `[CAMERA] ${framing} ${angle}, ${movement}.`,
@@ -126,6 +139,11 @@ function parseDialogues(script45s: unknown): ScriptDialogue[] {
   const maybe = (script45s as { dialogues?: unknown }).dialogues;
   if (!Array.isArray(maybe)) return [];
   return maybe.filter((x) => typeof x === 'object' && !!x) as ScriptDialogue[];
+}
+
+function parseScriptMeta(script45s: unknown): ScriptMeta | undefined {
+  if (!script45s || typeof script45s !== 'object') return undefined;
+  return script45s as ScriptMeta;
 }
 
 function pickBeat(beats: Beat[], n: number, panelCount: number): Beat | undefined {
@@ -167,13 +185,14 @@ export async function panelPromptsStep(input: StepInput): Promise<{ progress: nu
 
   const panelCount =
     Number.isInteger(input.panelCount) && input.panelCount
-      ? input.panelCount
+      ? Math.max(18, input.panelCount)
       : Number.isInteger(fromOutline) && fromOutline
-      ? fromOutline
+      ? Math.max(18, fromOutline)
       : 18;
 
   const beats = parseBeats(episode.script45s);
   const dialogues = parseDialogues(episode.script45s);
+  const scriptMeta = parseScriptMeta(episode.script45s);
 
   await resetPanelImageRefs(input.episodeId);
 
@@ -187,7 +206,8 @@ export async function panelPromptsStep(input: StepInput): Promise<{ progress: nu
       stylePreset: episode.series.stylePreset,
       languageMode: episode.series.languageMode,
       beat: pickBeat(beats, i, panelCount),
-      dialogue: pickDialogue(dialogues, i, panelCount)
+      dialogue: pickDialogue(dialogues, i, panelCount),
+      scriptMeta
     });
 
     await prisma.panel.upsert({
